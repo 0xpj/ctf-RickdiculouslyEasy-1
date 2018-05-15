@@ -1,5 +1,5 @@
 # This is a repository where I share boot2root challenges writeups.
-# Every repository is a boot2root challenge found mainly on Vulnhub.com.
+Every repo is a boot2root challenge found mainly on Vulnhub.com.
 # Writeups are described in walkthrough.txt file. Other files are mainly scanning outputs or files found during the challenge.
 
 # About RickdiculouslyEasy:
